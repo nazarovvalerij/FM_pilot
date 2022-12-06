@@ -6,7 +6,6 @@ is
   c_pkg_name varchar(50) := c_schema || 'pkg_pilot_1006'; --Записываем название пакета
   c_pilot_num number := regexp_replace(c_pkg_name,'[^[:digit:]]');
   
-  --1006 - Пилотный проект Финансовый менеджер
 
 procedure p_run (
     i_start_dt date default null,
@@ -21,14 +20,10 @@ procedure p_run (
                               ,'Назаров В.Е.'
                               ,'Назаров В.Е.');
   
-/*    sb_utl.pkg_tech_date.p_wait_until(c_pkg_name
-                                       ,i_owner        => 'ASM_SANDBOX'
-                                       ,i_table_name   => 'FCT_OPERATIONS'
-                                       ,i_hour_to_wait => 12);*/
     
     p_pilot_1006(i_start_dt, i_end_dt, i_debug_n); --Основная процедура
     
-    sb_utl.pkg_log.p_end_pkg(c_pkg_name); --SB_LOG.MAIL_PKG_SET
+    sb_utl.pkg_log.p_end_pkg(c_pkg_name); 
   exception
     --Обработка ошибок*
     when others then
@@ -117,7 +112,7 @@ procedure p_run (
 	CLIENT_FIO, 
 	REPORT_DATE, 
 	OPERATION_DATE, 
-	OPERATION_DATE_SRC, --test 31/08/21
+	OPERATION_DATE_SRC,
 	CLIENT_EPK,
 	is_fraud,
 	in_motiv,
@@ -133,9 +128,6 @@ select --+parallel(8)
     x.SOURCE_SYSTEM_CODE, 
 	CASE 	WHEN (SOURCE_SYSTEM_CODE = 'ASBS' AND OPERATION_TYPE_ID IN ('Оформление ИПП\КПП')) THEN x.PRODUCT_ITEM_ID 
 			ELSE x.ID_VDMRB END AS ID_VDMRB, 
-	--CASE	WHEN x.PRODUCT_ID IS NULL then (SELECT --+parallel(16)
-                                   			--DISTINCT fop.PRODUCT_ID FROM ASM_SANDBOX.FCT_OPERATIONS_PREMIER fop WHERE x.PRODUCT_NAME = fop.PRODUCT_NAME AND fop.PRODUCT_ID IS NOT NULL AND fop.OPERATION_DATE between v_start_dt AND v_end_dt AND x.AGREEMENT_NUM =fop.AGREEMENT_NUM )
-	--		ELSE x.PRODUCT_ID END AS PRODUCT_ID, --15/11/2021 кейсы с пифами, разделенными на 2 строки
 	x.PRODUCT_ID,
 	x.PRODUCT_NAME, 
 	x.OPERATION_TYPE_ID, 
@@ -183,24 +175,20 @@ WHERE 1=1
 	--ПИФ
 	(SOURCE_SYSTEM_CODE = 'PIFIYA'
 	         AND OPERATION_TYPE_ID IN ('ПИФ','ЗПИФ'))
-    OR
-    -- Открытие брокерского счёта
-    x.CALC_PRODUCT_ID ='0008.0011.0009'  --раскоментить, когда будут готовы фроды по продукту
+        OR
+        -- Открытие брокерского счёта
+        x.CALC_PRODUCT_ID ='0008.0011.0009' 
+		
 	or
 	--ДУ/ИИС
 	(SOURCE_SYSTEM_CODE = 'PIFIYA'
          AND OPERATION_TYPE_ID IN ('ИИС', 'ДУ'))
 	)
 	AND lower(x.OPERATION_NAME) NOT LIKE '%комиссия%'
-	AND x.CLIENT_EPK <> '-1'
-	
-
-		
-
-	
+	AND x.CLIENT_EPK <> '-1'	
   )
-	--AND x.CLIENT_FIO IS not null
-	where 1=1--OPERATION_DATE >= v_start_date
+
+	where 1=1
   and  report_date between v_start_dt AND v_end_dt
   ;
 
@@ -424,9 +412,9 @@ USING (
 	FROM sb_buf.PILOT_1006 p2 
 	WHERE p2.CLIENT_EPK IN (
 							SELECT 
-							--row_number()OVER(PARTITION BY fe.CLIENT_EPK ORDER BY fe.AGRMNT_OPEN_DT, nvl(fe.AGRMNT_CLOSE_DT ,date'2021-11-01')) cnt,
+							
 							fe.CLIENT_EPK
-							--,nvl(fe.AGRMNT_CLOSE_DT ,date'2021-11-01')
+							
 							FROM ASM_SANDBOX.FCT_BROKER_CLIENT_EPK fe
 							WHERE fe.CLIENT_EPK IN (SELECT --+parallel(16)
 													p.CLIENT_EPK 
@@ -500,10 +488,7 @@ USING (
 		SELECT --+parallel(16)
 		DISTINCT
 			x2.rowid AS rw
-			--row_number()OVER(PARTITION BY fe.CLIENT_EPK ORDER BY fe.AGRMNT_OPEN_DT, nvl(fe.AGRMNT_CLOSE_DT ,date'2021-11-01')) cnt,
-			--fe.*--fe.CLIENT_EPK
-			--,last_day(x2.REPORT_DATE)+2
-			--,nvl(fe.AGRMNT_CLOSE_DT ,date'2021-11-01')
+
 		FROM ASM_SANDBOX.FCT_BROKER_CLIENT_EPK fe
 		JOIN SB_BUF.PILOT_1006 x2
 			ON x2.CLIENT_EPK = fe.CLIENT_EPK 
@@ -582,14 +567,9 @@ commit;
     merge  --+ parallel (4)
     into
     SB_BUF.PILOT_1006  a
-	USING (	/*SELECT --+parallel(16) 
-			DISTINCT  fop.PRODUCT_ID  , fop.PRODUCT_NAME--, fop.PRODUCT_ITEM_ID rowid AS rw,
-			FROM SB_BUF.PILOT_1006 fop 
-			WHERE 1=1
-				AND fop.PRODUCT_ID IS NOT NULL 
-				AND fop.OPERATION_DATE between v_start_dt AND v_end_dt */
+	USING (
 	
-	--стали попадаться несколько product_name с разными product_id 23/12/2021
+	--стали попадаться несколько product_name с разными product_id 
 			SELECT * FROM (
 							SELECT --+parallel(16) 
 							row_number()over(PARTITION BY PRODUCT_NAME ORDER BY PRODUCT_ID asc) AS rn, 
@@ -623,7 +603,7 @@ commit;
        	set is_fraud = 7, in_motiv = 0
      where x.cnt >1 
      and SOURCE_SYSTEM_CODE in ('ASBS','PIFIYA','CBDBO')
-	   AND OPERATION_TYPE_ID IN ('Оформление ИПП\КПП','ИИС','ДУ','BROKER_COMMISSION'/*,'BROKER_ACCOUNT'*/);
+	   AND OPERATION_TYPE_ID IN ('Оформление ИПП\КПП','ИИС','ДУ','BROKER_COMMISSION');
      
   sb_utl.pkg_log.p_add_log(c_pkg_name, c_p_name, 'end update fraud 7 ИПП SB_BUF.PILOT_1006',
                 i_cnt_changes => sql%rowcount, i_dt_start => v_start_dt, i_dt_finish => v_end_dt);
@@ -721,7 +701,7 @@ commit;
        	set is_fraud = 1, in_motiv = 0
      where amount_rur < 14800
      	AND x.OPERATION_TYPE_ID IN ('ПИФ','ЗПИФ')
-		AND lower(x.OPERATION_NAME) NOT LIKE '%комиссия%'--может это не исключать??
+		AND lower(x.OPERATION_NAME) NOT LIKE '%комиссия%'
 		AND lower(x.OPERATION_NAME) NOT LIKE '%от объемов%'
        	--and operation_date between v_start_dt and v_end_dt
        	AND trunc(operation_date) between v_start_dt and v_end_dt 
@@ -754,7 +734,7 @@ commit;
         AND a.OPERATION_TYPE_ID IN ('ИСЖ','НСЖ','ПИФ','ЗПИФ','ИИС','ДУ','BROKER_COMMISSION')
         and t.STATUS = 'A'
         and t.r =1
-        AND a.rowid NOT IN (SELECT rw FROM					--24/11/2021 Назаров. Для этих страховок целевой клиент старше 70 лет, убираем из фрода
+        AND a.rowid NOT IN (SELECT rw FROM					--Для этих страховок целевой клиент старше 70 лет, убираем из фрода
 										(
 										SELECT
 										rowid AS rw,
@@ -878,50 +858,19 @@ commit;
 	INTO 
      SB_BUF.PILOT_1006  a
     using (                       
-							/*SELECT --+parallel(16)
-							DISTINCT
-			   					o.rowid rw, ltrim (c.EMPLOYEEPERSONALNUMBER,'000') tab_num
-			   				from SB_BUF.PILOT_1006 o 
-			                join sb_src.sbolpro_events c
-			                ON
-				                o.CLIENT_EPK = c.EPK_ID 
-				                and trunc(c.DATA_TIMESTAMP) between trunc(o.OPERATION_DATE)-5 AND trunc(o.OPERATION_DATE)
-				                AND ltrim (c.EMPLOYEEPERSONALNUMBER,'000') IS NOT NULL
-				                AND o.TAB_NUM IS null
-			                JOIN sb_fct.v_sap_dic_employee_org_pos ep  
-							ON
-								ltrim (c.EMPLOYEEPERSONALNUMBER,'000')=CAST(ep.EMPLOYEE_ID AS varchar2(100)) 
-								AND ep.POSITION_GROUP in ('ФМ')  
-								and trunc(o.OPERATION_DATE) between trunc(ep.START_DATE) and trunc(ep.END_DATE)
-							WHERE
-								trunc(o.operation_date) between v_start_dt and v_end_dt 
-								AND o.OPERATION_TYPE_ID NOT IN ('ИИС','ДУ')*/
-    --13/10/2021 борьба с дублями
     						SELECT *
 							FROM (
 									SELECT --+parallel(16)
 									DISTINCT
-										--count(*)OVER(PARTITION BY o.rowid) cnt,
 										row_number() over(PARTITION BY o.rowid ORDER BY c.DATA_TIMESTAMP DESC ,c.EMPLOYEEPERSONALNUMBER asc) num_of_row , --последний по дате, первый по ТН (коммент от 23/12/2021, сделано ранее)
 										o.rowid as rw, 
 										ltrim (c.EMPLOYEEPERSONALNUMBER,'000') AS tab_num--,
 										--o.*
 									from SB_BUF.PILOT_1006 o 
 									join (
-											/*SELECT --+parallel(16)
+                     									SELECT --+parallel(16)
 											DISTINCT
-												--count(*)OVER(PARTITION BY trunc(DATA_TIMESTAMP),EMPLOYEEPERSONALNUMBER,EPK_ID) cnt,
-												 trunc(DATA_TIMESTAMP) DATA_TIMESTAMP, 
-												EMPLOYEEPERSONALNUMBER, 
-												EPK_ID 
-											FROM sb_src.sbolpro_events 
-                     						 where EMPLOYEEPERSONALNUMBER is not NULL*/
-                     						 
-                     					--10/12/2021 перевод на витрину сессий сболпро		 
-									
-                     						SELECT --+parallel(16)
-											DISTINCT
-												--count(*)OVER(PARTITION BY trunc(DATA_TIMESTAMP),EMPLOYEEPERSONALNUMBER,EPK_ID) cnt,
+												
 												 trunc(ess.DT_START) DATA_TIMESTAMP, 
 												ess.EMPLOYEE_ID as EMPLOYEEPERSONALNUMBER, 
 												ess.PPRB_ID AS EPK_ID 
@@ -931,7 +880,6 @@ commit;
 									ON
 									    o.CLIENT_EPK = c.EPK_ID 
 									    AND (trunc(C.DATA_TIMESTAMP) BETWEEN TRUNC(CASE WHEN (O.OPERATION_DATE<>o.OPERATION_DATE_SRC AND o.OPERATION_DATE_SRC<o.REPORT_DATE) THEN o.OPERATION_DATE_SRC ELSE o.OPERATION_DATE end)-5 AND TRUNC(CASE WHEN (O.OPERATION_DATE<>o.OPERATION_DATE_SRC AND o.OPERATION_DATE_SRC<o.REPORT_DATE) THEN o.OPERATION_DATE_SRC ELSE o.OPERATION_DATE end))
-									    --and trunc(c.DATA_TIMESTAMP) between trunc(o.OPERATION_DATE)-5 AND trunc(o.OPERATION_DATE)
 									    AND ltrim (c.EMPLOYEEPERSONALNUMBER,'000') IS NOT NULL
 									    AND o.TAB_NUM IS null
 									JOIN sb_fct.v_sap_dic_employee_org_pos ep  
@@ -941,7 +889,7 @@ commit;
 										and trunc(CASE WHEN (O.OPERATION_DATE<>o.OPERATION_DATE_SRC AND o.OPERATION_DATE_SRC<o.REPORT_DATE) THEN o.OPERATION_DATE_SRC ELSE o.OPERATION_DATE end) between trunc(ep.START_DATE) and trunc(ep.END_DATE)
 									WHERE
 										trunc(o.operation_date) between v_start_dt and v_end_dt  
-										--AND o.OPERATION_TYPE_ID IN ('ИИС','ДУ')
+
 								)  
 							WHERE num_of_row=1
 						
@@ -974,24 +922,23 @@ SB_BUF.PILOT_1006 F USING
 				SELECT --+no_index (C IDX4_CRM_OPS) 
 			    DISTINCT 
 			    row_number() over(PARTITION BY o.rowid ORDER BY c.DTTM desc,c.EMPLOYEE_ID asc) num_of_row ,
-				O.ROWID RW, C.EMPLOYEE_ID--, trunc(c.DTTM) AS date_src
+				O.ROWID RW, C.EMPLOYEE_ID
 				FROM SB_BUF.PILOT_1006 O 
 				JOIN SB_SRC.CRM_OPS C 
 				ON O.CLIENT_EPK = C.EPK_ID 
 					AND (trunc(C.DTTM) BETWEEN TRUNC(CASE WHEN (O.OPERATION_DATE<>o.OPERATION_DATE_SRC AND o.OPERATION_DATE_SRC<o.REPORT_DATE) THEN o.OPERATION_DATE_SRC ELSE o.OPERATION_DATE end)-5 AND TRUNC(CASE WHEN (O.OPERATION_DATE<>o.OPERATION_DATE_SRC AND o.OPERATION_DATE_SRC<o.REPORT_DATE) THEN o.OPERATION_DATE_SRC ELSE o.OPERATION_DATE end)) 
-					--and DTTM>=sysdate-40--date'2021-08-01'
 					AND o.TAB_NUM IS null
 				JOIN SB_FCT.V_SAP_DIC_EMPLOYEE_ORG_POS EP 
 				ON CAST(C.EMPLOYEE_ID AS VARCHAR2(100))=CAST(EP.EMPLOYEE_ID AS VARCHAR2(100))
 					AND EP.POSITION_GROUP in ('ФМ','РО','ЗРО') 
 					AND (TRUNC(CASE WHEN (O.OPERATION_DATE<>o.OPERATION_DATE_SRC AND o.OPERATION_DATE_SRC<o.REPORT_DATE) THEN o.OPERATION_DATE_SRC ELSE o.OPERATION_DATE end) BETWEEN TRUNC(EP.START_DATE) AND TRUNC(EP.END_DATE)) 
 					WHERE 1=1 
-						AND trunc(o.operation_date) between v_start_dt and v_end_dt --29/09/2021 апдейт после ввода даты отчета
+						AND trunc(o.operation_date) between v_start_dt and v_end_dt 
 				)
 	WHERE num_of_row=1
 ) B
    ON ( B.RW = F.ROWID ) 
-  WHEN MATCHED THEN UPDATE SET F.TAB_NUM = B.EMPLOYEE_ID--, f.OPERATION_DATE_SRC = b.date_src
+  WHEN MATCHED THEN UPDATE SET F.TAB_NUM = B.EMPLOYEE_ID
  ;                                   
 
  	sb_utl.pkg_log.p_add_log(c_pkg_name, c_p_name, 'end merge employee_id CRM to SB_BUF.PILOT_1006',
@@ -1007,26 +954,24 @@ SB_BUF.PILOT_1006 F USING
 	SELECT --+no_index (C IDX4_CRM_OPS) 
     DISTINCT 
     row_number() over(PARTITION BY o.rowid ORDER BY c.DTTM_UPD desc,c.EMPLOYEE_ID asc) num_of_row ,
-	O.ROWID RW, C.EMPLOYEE_ID--, trunc(c.DTTM_UPD) AS date_src
+	O.ROWID RW, C.EMPLOYEE_ID
 	FROM SB_BUF.PILOT_1006 O 
 	JOIN SB_SRC.CRM_OPS C 
 	ON O.CLIENT_EPK = C.EPK_ID 
 		AND (trunc(C.DTTM_UPD) BETWEEN TRUNC(CASE WHEN (O.OPERATION_DATE<>o.OPERATION_DATE_SRC AND o.OPERATION_DATE_SRC<o.REPORT_DATE) THEN o.OPERATION_DATE_SRC ELSE o.OPERATION_DATE end)-5 AND TRUNC(CASE WHEN (O.OPERATION_DATE<>o.OPERATION_DATE_SRC AND o.OPERATION_DATE_SRC<o.REPORT_DATE) THEN o.OPERATION_DATE_SRC ELSE o.OPERATION_DATE end)) 
-		--AND (trunc(C.DTTM_UPD) BETWEEN TRUNC(O.OPERATION_DATE)-5 AND TRUNC(O.OPERATION_DATE)) 
-		--and DTTM>=sysdate-40--date'2021-08-01'
 		AND o.TAB_NUM IS null
 	JOIN SB_FCT.V_SAP_DIC_EMPLOYEE_ORG_POS EP 
 	ON CAST(C.EMPLOYEE_ID AS VARCHAR2(100))=CAST(EP.EMPLOYEE_ID AS VARCHAR2(100))
 		AND EP.POSITION_GROUP in ('ФМ','РО','ЗРО') 
 		AND (TRUNC(CASE WHEN (O.OPERATION_DATE<>o.OPERATION_DATE_SRC AND o.OPERATION_DATE_SRC<o.REPORT_DATE) THEN o.OPERATION_DATE_SRC ELSE o.OPERATION_DATE end) BETWEEN TRUNC(EP.START_DATE) AND TRUNC(EP.END_DATE)) 
 		WHERE 1=1
-			AND trunc(o.operation_date) between v_start_dt and v_end_dt --09\11\2021 возможно надо убрать? чтобы не терять табельники к операциям? которые тянутся за последние 5 дней из предыдущего месяца
+			AND trunc(o.operation_date) between v_start_dt and v_end_dt 
 			
 		)	
 	WHERE num_of_row=1
 ) B
    ON ( B.RW = F.ROWID) 
-  WHEN MATCHED THEN UPDATE SET F.TAB_NUM = B.EMPLOYEE_ID--, f.OPERATION_DATE_SRC = b.date_src
+  WHEN MATCHED THEN UPDATE SET F.TAB_NUM = B.EMPLOYEE_ID
  ;
 
 
@@ -1040,7 +985,7 @@ SB_BUF.PILOT_1006 F USING
 
    
    
---Тянем табельники для ИОС 07/12/2021
+--Тянем табельники для ИОС 
 
 sb_utl.pkg_log.p_add_log(c_pkg_name,
                              c_p_name,
@@ -1065,7 +1010,6 @@ using (
 				FROM sb_buf.PILOT_1006 p 
 				JOIN (SELECT --+parallel(16)
 						DISTINCT
-							--count(*)OVER(PARTITION BY trunc(DATA_TIMESTAMP),EMPLOYEEPERSONALNUMBER,EPK_ID) cnt,
 							 trunc(DATA_TIMESTAMP) DATA_TIMESTAMP, 
 							EMPLOYEEPERSONALNUMBER, 
 							EPK_ID 
@@ -1219,7 +1163,7 @@ COMMIT;
    
 
 
---27/10/2021
+
 --Убираем фрод 3 (по кол-ву ПИФ в день) для территорий, рассчитываемых по КД
 
 	sb_utl.pkg_log.p_add_log(c_pkg_name,
@@ -1522,11 +1466,7 @@ COMMIT;
              null organization_vsp_id,
              a.source_system_code as source_system_code,
              a.ID_VDMRB as id_vdmrb,
-             
              trunc(a.operation_date), 
-             
-             
-             
              a.product_id AS product_id,
              a.PRODUCT_NAME AS product_name,
              a.operation_type_id as operation_type_id,
@@ -1591,20 +1531,13 @@ COMMIT;
 
     asm_sandbox.sp_operations_mapping('PIFIYA');
     asm_sandbox.sp_operations_mapping('ASBS');
-   	asm_sandbox.sp_operations_mapping('CBDBO');
+    asm_sandbox.sp_operations_mapping('CBDBO');
 
     sb_utl.pkg_log.p_add_log(c_pkg_name,
                              c_p_name,
                              'END MAPPING',
                              i_dt_start   => v_start_dt,
                              i_dt_finish  => v_end_dt);
-
-                    
-
-
-
-
-
 
                
    sb_utl.pkg_log.p_add_log(c_pkg_name,
@@ -1850,8 +1783,7 @@ count(*)over(partition by op.employee_id,op.product_item_id,op.epk_id,op.source_
  and op.employee_id = ep.EMPLOYEE_ID
  
 where 1=1
-AND trunc(op.operation_date) between v_start_dt and v_end_dt --29/09/2021 апдейт после ввода даты отчета
---op.operation_date between v_start_dt and v_end_dt
+AND trunc(op.operation_date) between v_start_dt and v_end_dt
 and op.product_item_id like '999-%'
 )
 where cnt >1
@@ -1867,16 +1799,6 @@ sb_utl.pkg_log.p_add_log(c_pkg_name,
                              i_dt_finish                             => v_end_dt);
 
 commit;
-
-
-
-
-
-
-
-
-
-
 
 
 	sb_utl.pkg_log.p_end_proc(c_pkg_name, c_p_name);
